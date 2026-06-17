@@ -1,1 +1,4 @@
 kaggle_dataset/
+kaggle_dataset_aircraft/
+__pycache__
+.gitattributes
