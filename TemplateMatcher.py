@@ -16,7 +16,7 @@ class TemplateMatcher:
     def __init__(self, templates_dir="hw1_dataset/training_images/", validationSet="hw1_dataset/labels_validation.csv", testSet="hw1_dataset/labels_test.csv"):
         self._method = cv2.TM_CCOEFF_NORMED
         self._method_threshold = 0.7
-        self._kernelSize = 9
+        self._kernelSize = 5
         
         self.templates = self.load_templates(templates_dir)
         self.validationSet = validationSet
