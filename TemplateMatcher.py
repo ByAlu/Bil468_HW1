@@ -14,9 +14,9 @@ from sklearn.metrics import (
 
 class TemplateMatcher:
     def __init__(self, templates_dir="hw1_dataset/training_images/", validationSet="hw1_dataset/labels_validation.csv", testSet="hw1_dataset/labels_test.csv"):
-        self._method = cv2.TM_SQDIFF_NORMED
-        self._sqdiff_threshold = 0.40
-        self._kernelSize = 5
+        self._method = cv2.TM_CCOEFF_NORMED
+        self._method_threshold = 0.7
+        self._kernelSize = 9
         
         self.templates = self.load_templates(templates_dir)
         self.validationSet = validationSet
@@ -42,6 +42,9 @@ class TemplateMatcher:
     
     # tm yi uygullar ve metoda göre değer ve lokasyonu döner
     def apply_template_matching(self_,image, template):
+        # imageye önişlem
+
+
         result = cv2.matchTemplate(image, template, self_._method)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
         
@@ -73,66 +76,72 @@ class TemplateMatcher:
         self_._kernelSize = size
         self_.load_templates()
 
-    def train(self, thresholds):
+    def train(self, thresholds, method_thresholds):
         return_scores = []
         best_f1 = -1
         validation_data = pd.read_csv(self.validationSet)
         rows = validation_data.shape[0]
         y_true = validation_data["contains_car"].values
-        for threshold in thresholds:
-            y_pred = []
-            for i in range(rows):
-                image = cv2.imread(validation_data.loc[i, "frame"], cv2.IMREAD_GRAYSCALE)
-                image = cv2.GaussianBlur(image, (self._kernelSize, self._kernelSize), 0)
-                best_intersection = [self._sqdiff_threshold, (0,0), (0,0)]
-                for(template_name, template_list) in self.templates.items():
-                    for template in template_list:
-                        val, loc = self.apply_template_matching(image, template)
-                                                
-                        if self.compare_results(best_intersection[0], val):
-                            best_intersection = [val,loc,template.shape]
+        best_threshold = 0
+        best_method_threshold = 0
+        for method_threshold in method_thresholds:
+            for threshold in thresholds:
+                y_pred = []
+                for i in range(rows):
+                    image = cv2.imread(validation_data.loc[i, "frame"], cv2.IMREAD_GRAYSCALE)
+                    image = cv2.GaussianBlur(image, (self._kernelSize, self._kernelSize), 0)
+                    best_intersection = [method_threshold, (0,0), (0,0)]
+                    for(template_name, template_list) in self.templates.items():
+                        for template in template_list:
+                            val, loc = self.apply_template_matching(image, template)
+                                                    
+                            if self.compare_results(best_intersection[0], val):
+                                best_intersection = [val,loc,template.shape]
 
-                if ~self.compare_results(self._sqdiff_threshold, best_intersection[0]):
-                    y_pred.append(False)
-                    continue
-                else:
-                    if(y_true[i]):
-                        min_loc = best_intersection[1]
-                        template = best_intersection[2]
-                        intersect_area = self.calculate_area_intersection(
-                                    (validation_data.loc[i]["xmin"], validation_data.loc[i]["ymin"],
-                                    validation_data.loc[i]["xmax"], validation_data.loc[i]["ymax"]),
-                                    (min_loc[0], min_loc[1], min_loc[0] + template[1], min_loc[1] + template[0])
-                                )
-                        if intersect_area >= threshold:
-                            y_pred.append(True)
-                        else:
-                            y_pred.append(False)
+                    if ~self.compare_results(method_threshold, best_intersection[0]):
+                        y_pred.append(False)
+                        continue
                     else:
-                        y_pred.append(True)
-            
-            # confusion matrix hesapla
-            cm = confusion_matrix(y_true, y_pred)
-            acs = accuracy_score(y_true, y_pred)
-            ps = precision_score(y_true, y_pred)
-            rs = recall_score(y_true, y_pred)
-            f1 = f1_score(y_true, y_pred)
-            mse = mean_squared_error(y_true, y_pred)
+                        if(y_true[i]):
+                            min_loc = best_intersection[1]
+                            template = best_intersection[2]
+                            intersect_area = self.calculate_area_intersection(
+                                        (validation_data.loc[i]["xmin"], validation_data.loc[i]["ymin"],
+                                        validation_data.loc[i]["xmax"], validation_data.loc[i]["ymax"]),
+                                        (min_loc[0], min_loc[1], min_loc[0] + template[1], min_loc[1] + template[0])
+                                    )
+                            if intersect_area >= threshold:
+                                y_pred.append(True)
+                            else:
+                                y_pred.append(False)
+                        else:
+                            y_pred.append(True)
+                
+                # confusion matrix hesapla
+                cm = confusion_matrix(y_true, y_pred)
+                acs = accuracy_score(y_true, y_pred)
+                ps = precision_score(y_true, y_pred)
+                rs = recall_score(y_true, y_pred)
+                f1 = f1_score(y_true, y_pred)
+                mse = mean_squared_error(y_true, y_pred)
 
-            return_scores.append({
-                "confusion_matrix":cm,
-                "accuracy_score": acs,
-                "precision_score": ps,
-                "recall_score": rs,
-                "f1_score":f1,
-                "mean_squared_error": mse
-            } 
-            )
+                return_scores.append({                   
+                    "confusion_matrix":cm,
+                    "accuracy_score": acs,
+                    "precision_score": ps,
+                    "recall_score": rs,
+                    "f1_score":f1,
+                    "mean_squared_error": mse
+                } 
+                )
 
-            if(f1>best_f1):
-                best_threshold = threshold          
+                if(f1>best_f1):
+                    best_threshold = threshold
+                    best_method_threshold = method_threshold
+
         
         self.threshold = best_threshold
+        self._method_threshold = best_method_threshold
         return return_scores
     
 
@@ -144,7 +153,7 @@ class TemplateMatcher:
         for i in range(rows):
             image = cv2.imread(validation_data.loc[i, "frame"], cv2.IMREAD_GRAYSCALE)
             image = cv2.GaussianBlur(image, (self._kernelSize, self._kernelSize), 0)
-            best_intersection = [self._sqdiff_threshold, (0,0), (0,0)]
+            best_intersection = [self._method_threshold, (0,0), (0,0)]
             for(template_name, template_list) in self.templates.items():
                 for template in template_list:
                     val, loc = self.apply_template_matching(image, template)
@@ -152,7 +161,7 @@ class TemplateMatcher:
                     if self.compare_results(best_intersection[0], val):
                         best_intersection = [val,loc,template.shape]
 
-            if ~self.compare_results(self._sqdiff_threshold, best_intersection[0]):
+            if ~self.compare_results(self._method_threshold, best_intersection[0]):
                 y_pred.append(False)
                 continue
             else:
@@ -192,7 +201,7 @@ class TemplateMatcher:
             image = cv2.imread(imageName)
             image_gray = cv2.imread(imageName, cv2.IMREAD_GRAYSCALE)
             image_gray = cv2.GaussianBlur(image_gray, (self._kernelSize, self._kernelSize), 0)
-            best_intersection = [self._sqdiff_threshold, (0,0), (0,0)]
+            best_intersection = [self._method_threshold, (0,0), (0,0)]
             for(template_name, template_list) in self.templates.items():
                 for template in template_list:
                     val, loc = self.apply_template_matching(image_gray, template)
@@ -201,7 +210,7 @@ class TemplateMatcher:
                         best_intersection = [val, loc, template.shape]
                         
             # Doğru alan mavi, bulunan alan yeşil
-            if self.compare_results(self._sqdiff_threshold, best_intersection[0]):
+            if self.compare_results(self._method_threshold, best_intersection[0]):
                 print(best_intersection)
                 min_loc = best_intersection[1]
                 template = best_intersection[2]
