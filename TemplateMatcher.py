@@ -229,13 +229,18 @@ class TemplateMatcher:
                 print(best_intersection)
                 min_loc = best_intersection[1]
                 template = best_intersection[2]
-                cv2.rectangle(image_sub, (min_loc[0], min_loc[1]), (min_loc[0] + template[0], min_loc[1] + template[1]), (0, 255, 0), 2)
-
-                cv2.imshow("Detected", image_sub)
-                key = cv2.waitKey(0)
-                if(key == 27):  # ESC tuşu
-                    cv2.destroyAllWindows()
-                    break         
+                intersect_area = self.calculate_area_intersection(
+                                (test_data.loc[i]["xmin"], test_data.loc[i]["ymin"],
+                                test_data.loc[i]["xmax"], test_data.loc[i]["ymax"]),
+                                (min_loc[0], min_loc[1], min_loc[0] + template[1], min_loc[1] + template[0])
+                            )
+                if intersect_area >= self.threshold:
+                    cv2.rectangle(image_sub, (min_loc[0], min_loc[1]), (min_loc[0] + template[0], min_loc[1] + template[1]), (0, 255, 0), 2)
+                    cv2.imshow("Detected", image_sub)
+                    key = cv2.waitKey(0)
+                    if(key == 27):  # ESC tuşu
+                        cv2.destroyAllWindows()
+                        break         
 
 
 
