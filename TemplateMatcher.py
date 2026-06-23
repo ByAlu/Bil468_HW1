@@ -16,7 +16,7 @@ class TemplateMatcher:
     def __init__(self, templates_dir="hw1_dataset/training_images/", validationSet="hw1_dataset/labels_validation.csv", testSet="hw1_dataset/labels_test.csv"):
         self._method = cv2.TM_CCOEFF_NORMED
         self._method_threshold = 0.7
-        self._kernelSize = 5
+        self._kernelSize = 3
         
         self.templates = self.load_templates(templates_dir)
         self.validationSet = validationSet
@@ -32,7 +32,7 @@ class TemplateMatcher:
             template_image = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE)
             templates[template_name] = []
             template_image = cv2.GaussianBlur(template_image, (self._kernelSize, self._kernelSize), 0)
-            sizes = [256, 128, 64, 32]
+            sizes = [256, 128, 64, 32, 16, 8]
             for size in sizes:
                 resized_template = cv2.resize(template_image, (size, size))
                 templates[template_name].append(resized_template)
@@ -76,6 +76,18 @@ class TemplateMatcher:
         self_._kernelSize = size
         self_.load_templates()
 
+    def load_images_from_csv(self, csv):
+        data = pd.read_csv(csv)
+        image_paths = data["frame"].values
+        return_iamges = []
+        for path in image_paths:
+            image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            image = cv2.GaussianBlur(image, (self._kernelSize, self._kernelSize), 0)
+            image = cv2.resize(image,(256,256))
+            return_iamges.append(image)
+        
+        return return_iamges 
+
     def train(self, thresholds, method_thresholds):
         return_scores = []
         best_f1 = -1
@@ -84,12 +96,12 @@ class TemplateMatcher:
         y_true = validation_data["contains_car"].values
         best_threshold = 0
         best_method_threshold = 0
+        images = self.load_images_from_csv(self.validationSet)
         for method_threshold in method_thresholds:
             for threshold in thresholds:
                 y_pred = []
                 for i in range(rows):
-                    image = cv2.imread(validation_data.loc[i, "frame"], cv2.IMREAD_GRAYSCALE)
-                    image = cv2.GaussianBlur(image, (self._kernelSize, self._kernelSize), 0)
+                    image = images[i]
                     best_intersection = [method_threshold, (0,0), (0,0)]
                     for(template_name, template_list) in self.templates.items():
                         for template in template_list:
@@ -115,7 +127,7 @@ class TemplateMatcher:
                             else:
                                 y_pred.append(False)
                         else:
-                            y_pred.append(True)
+                            y_pred.append(False)
                 
                 # confusion matrix hesapla
                 cm = confusion_matrix(y_true, y_pred)
@@ -125,7 +137,9 @@ class TemplateMatcher:
                 f1 = f1_score(y_true, y_pred)
                 mse = mean_squared_error(y_true, y_pred)
 
-                return_scores.append({                   
+                return_scores.append({
+                    "method_threshold":method_threshold,
+                    "threshold": threshold,                  
                     "confusion_matrix":cm,
                     "accuracy_score": acs,
                     "precision_score": ps,
@@ -150,14 +164,13 @@ class TemplateMatcher:
         rows = validation_data.shape[0]
         y_true = validation_data["contains_car"].values
         y_pred = []
+        images = self.load_images_from_csv(self.testSet)
         for i in range(rows):
-            image = cv2.imread(validation_data.loc[i, "frame"], cv2.IMREAD_GRAYSCALE)
-            image = cv2.GaussianBlur(image, (self._kernelSize, self._kernelSize), 0)
+            image = images[i]
             best_intersection = [self._method_threshold, (0,0), (0,0)]
             for(template_name, template_list) in self.templates.items():
                 for template in template_list:
-                    val, loc = self.apply_template_matching(image, template)
-                                               
+                    val, loc = self.apply_template_matching(image, template)                                               
                     if self.compare_results(best_intersection[0], val):
                         best_intersection = [val,loc,template.shape]
 
@@ -178,7 +191,7 @@ class TemplateMatcher:
                     else:
                         y_pred.append(False)
                 else:
-                    y_pred.append(True)
+                    y_pred.append(False)
 
         accuracy = accuracy_score(y_true, y_pred)
         precision = precision_score(y_true, y_pred)
@@ -199,8 +212,10 @@ class TemplateMatcher:
             imageName = test_data.iloc[i]["frame"]
             print(imageName, " ", y_true[i])
             image = cv2.imread(imageName)
+            image_sub = cv2.resize(image,(256,256))
             image_gray = cv2.imread(imageName, cv2.IMREAD_GRAYSCALE)
             image_gray = cv2.GaussianBlur(image_gray, (self._kernelSize, self._kernelSize), 0)
+            image_gray = cv2.resize(image_gray,(256,256))
             best_intersection = [self._method_threshold, (0,0), (0,0)]
             for(template_name, template_list) in self.templates.items():
                 for template in template_list:
@@ -214,15 +229,13 @@ class TemplateMatcher:
                 print(best_intersection)
                 min_loc = best_intersection[1]
                 template = best_intersection[2]
-                cv2.rectangle(image, (min_loc[0], min_loc[1]), (min_loc[0] + template[0], min_loc[1] + template[1]), (0, 255, 0), 2)
+                cv2.rectangle(image_sub, (min_loc[0], min_loc[1]), (min_loc[0] + template[0], min_loc[1] + template[1]), (0, 255, 0), 2)
 
-                cv2.imshow("Detected", image)
+                cv2.imshow("Detected", image_sub)
                 key = cv2.waitKey(0)
                 if(key == 27):  # ESC tuşu
                     cv2.destroyAllWindows()
-                    break
-            
-                
+                    break         
 
 
 
