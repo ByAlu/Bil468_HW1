@@ -86,7 +86,38 @@ class TemplateMatcher:
             image = cv2.resize(image,(256,256))
             return_iamges.append(image)
         
-        return return_iamges 
+        return return_iamges
+    
+    # x ve y scale edilecek size. Bu örnekte 256x256
+    def scale_bounding_boxes(self, csv, x = 256, y = 256):
+        data = pd.read_csv(csv)
+        image_paths = data["frame"].values
+        image_xmin = data["xmin"].values
+        image_ymin = data["ymin"].values
+        image_xmax = data["xmax"].values
+        image_ymax = data["ymax"].values
+
+        xmin = []
+        ymin = []
+        xmax = []
+        ymax = []
+        for i, path in enumerate(image_paths):
+            image = cv2.imread(path)
+            h, w, c = image.shape
+
+            scaled_xmin = image_xmin[i] / w * x
+            scaled_ymin = image_ymin[i] / h * y
+            scaled_xmax = image_xmax[i] / w * x
+            scaled_ymax = image_ymax[i] / h * y
+
+            xmin.append(scaled_xmin)
+            ymin.append(scaled_ymin)
+            xmax.append(scaled_xmax)
+            ymax.append(scaled_ymax)
+
+        
+        return xmin, ymin, xmax, ymax
+        
 
     def train(self, thresholds, method_thresholds):
         return_scores = []
@@ -97,6 +128,7 @@ class TemplateMatcher:
         best_threshold = 0
         best_method_threshold = 0
         images = self.load_images_from_csv(self.validationSet)
+        xmin, ymin, xmax, ymax = self.scale_bounding_boxes(self.validationSet)
         for method_threshold in method_thresholds:
             for threshold in thresholds:
                 y_pred = []
@@ -118,8 +150,7 @@ class TemplateMatcher:
                             min_loc = best_intersection[1]
                             template = best_intersection[2]
                             intersect_area = self.calculate_area_intersection(
-                                        (validation_data.loc[i]["xmin"], validation_data.loc[i]["ymin"],
-                                        validation_data.loc[i]["xmax"], validation_data.loc[i]["ymax"]),
+                                        (xmin[i], ymin[i], xmax[i], ymax[i]),
                                         (min_loc[0], min_loc[1], min_loc[0] + template[1], min_loc[1] + template[0])
                                     )
                             if intersect_area >= threshold:
@@ -165,6 +196,8 @@ class TemplateMatcher:
         y_true = validation_data["contains_car"].values
         y_pred = []
         images = self.load_images_from_csv(self.testSet)
+        xmin, ymin, xmax, ymax = self.scale_bounding_boxes(self.validationSet)
+
         for i in range(rows):
             image = images[i]
             best_intersection = [self._method_threshold, (0,0), (0,0)]
@@ -182,8 +215,7 @@ class TemplateMatcher:
                     min_loc = best_intersection[1]
                     template = best_intersection[2]
                     intersect_area = self.calculate_area_intersection(
-                                (validation_data.loc[i]["xmin"], validation_data.loc[i]["ymin"],
-                                validation_data.loc[i]["xmax"], validation_data.loc[i]["ymax"]),
+                                (xmin[i], ymin[i], xmax[i], ymax[i]),
                                 (min_loc[0], min_loc[1], min_loc[0] + template[1], min_loc[1] + template[0])
                             )
                     if intersect_area >= self.threshold:
@@ -203,44 +235,46 @@ class TemplateMatcher:
         return confusion, accuracy, precision, recall, f1, mse
     
 
-    # Kullanılmadan önce threshold değeri belirlenmelidir. Tüm test verisi için çalışır 
-    def test(self):
-        test_data = pd.read_csv(self.testSet)
-        rows = test_data.shape[0]
-        y_true = test_data["contains_car"].values
-        for i in range(rows):
-            imageName = test_data.iloc[i]["frame"]
-            print(imageName, " ", y_true[i])
-            image = cv2.imread(imageName)
-            image_sub = cv2.resize(image,(256,256))
-            image_gray = cv2.imread(imageName, cv2.IMREAD_GRAYSCALE)
-            image_gray = cv2.GaussianBlur(image_gray, (self._kernelSize, self._kernelSize), 0)
-            image_gray = cv2.resize(image_gray,(256,256))
-            best_intersection = [self._method_threshold, (0,0), (0,0)]
-            for(template_name, template_list) in self.templates.items():
-                for template in template_list:
-                    val, loc = self.apply_template_matching(image_gray, template)
-                    #bulundu mu
-                    if self.compare_results(best_intersection[0], val):
-                        best_intersection = [val, loc, template.shape]
+    # Verilen image de bulunan boxı çizip döner
+    # Kullanılmadan önce threshold değeri belirlenmelidir. image orijinal hali olmalı 
+    def test(self, image_path, contains_car, xmin, ymin, xmax, ymax):
+        print(image_path, " ", contains_car)
+        image = cv2.imread(image_path)
+        h, w ,c = image.shape
+        # bounding box değerlerini ayarla
+        xmin = xmin / w * 256
+        ymin = ymin / h * 256
+        xmax = xmax / w * 256
+        ymax = ymax / h * 256
+
+
+        image_sub = cv2.resize(image,(256,256))
+
+        image_gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+        image_gray = cv2.GaussianBlur(image_gray, (self._kernelSize, self._kernelSize), 0)
+        image_gray = cv2.resize(image_gray,(256,256))
+        best_intersection = [self._method_threshold, (0,0), (0,0)]
+        
+        for(template_name, template_list) in self.templates.items():
+            for template in template_list:
+                val, loc = self.apply_template_matching(image_gray, template)
+                #bulundu mu
+                if self.compare_results(best_intersection[0], val):
+                    best_intersection = [val, loc, template.shape]
                         
-            # Doğru alan mavi, bulunan alan yeşil
-            if self.compare_results(self._method_threshold, best_intersection[0]):
-                print(best_intersection)
-                min_loc = best_intersection[1]
-                template = best_intersection[2]
-                intersect_area = self.calculate_area_intersection(
-                                (test_data.loc[i]["xmin"], test_data.loc[i]["ymin"],
-                                test_data.loc[i]["xmax"], test_data.loc[i]["ymax"]),
-                                (min_loc[0], min_loc[1], min_loc[0] + template[1], min_loc[1] + template[0])
-                            )
-                if intersect_area >= self.threshold:
-                    cv2.rectangle(image_sub, (min_loc[0], min_loc[1]), (min_loc[0] + template[0], min_loc[1] + template[1]), (0, 255, 0), 2)
-                    cv2.imshow("Detected", image_sub)
-                    key = cv2.waitKey(0)
-                    if(key == 27):  # ESC tuşu
-                        cv2.destroyAllWindows()
-                        break         
+        # Doğru alan mavi, bulunan alan yeşil
+        if self.compare_results(self._method_threshold, best_intersection[0]):
+            min_loc = best_intersection[1]
+            template = best_intersection[2]
+            intersect_area = self.calculate_area_intersection(
+                (xmin, ymin, xmax, ymax),
+                (min_loc[0], min_loc[1], min_loc[0] + template[1], min_loc[1] + template[0])
+            )
+            if intersect_area >= self.threshold:
+                cv2.rectangle(image_sub, (min_loc[0], min_loc[1]), (min_loc[0] + template[0], min_loc[1] + template[1]), (0, 255, 0), 2)
+                return image_sub
+            else:
+                return None
 
 
 

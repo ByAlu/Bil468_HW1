@@ -5,4 +5,5 @@
 # Dosyalar hakkında
 - *createDataset.ipynb* dosyası validation ve test için kaggle dataseti içerisinden uygun frameleri ayıklar. Çıktı csv dosyalrı *hw1_dataset* klasörü içerisine kaydedilir. Tekrardan farklı setler için *randomSeed* değişkeni değiştirilebilir
 - *TemplateMatcher.py* dosyası template matching işleminden sorumlu sınıf ve fomksiyonları içerir.
-- *Test.py* dosyası manuel threshold ile basit bir testin nasıl kouşlacığının örneğidir  
+- *Test.ipynb* dosyası manuel threshold ile basit bir görsel testin nasıl koşulacığının örneğidir.
+- *main.ipynb* train ve test için örnek dosyadır
